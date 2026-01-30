@@ -5,13 +5,14 @@ import { getFirestore } from "firebase/firestore";
 
 // CONFIG HERE
 const firebaseConfig = {
-  apiKey: "AIzaSyDeewroudrh-GJsciJvEvOB6UTO5T9j1iA",
-  authDomain: "unigo-fa425.firebaseapp.com",
-  projectId: "unigo-fa425",
-  storageBucket: "unigo-fa425.firebasestorage.app",
-  messagingSenderId: "351387176342",
-  appId: "1:351387176342:web:62daa1b4ff6fd00ef7e1b7",
-  measurementId: "G-WWCQZQLJ5V"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  
 };
 
 // Initialize Firebase
