@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { X, MapPin, ShoppingBag, Car, ArrowRight, Save, Clock, Footprints } from 'lucide-react';
+import { X, MapPin, ShoppingBag, Car, ArrowRight, Save, Clock, Footprints, Utensils, Package } from 'lucide-react';
 
 const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) => {
+  // Types: RIDE, ERRAND, WALK, FOOD, ITEM
   const [type, setType] = useState('RIDE'); 
   const [subType, setSubType] = useState('REQUEST');
   const [formData, setFormData] = useState({ destination: '', description: '', time: '' });
@@ -32,6 +33,10 @@ const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) 
             setFormData(prev => ({...prev, description: 'Walking alone, need a virtual companion.'}));
         } else if (mode === 'ERRAND') {
             setType('ERRAND');
+        } else if (mode === 'FOOD') {
+            setType('FOOD');
+        } else if (mode === 'ITEM') {
+            setType('ITEM');
         } else {
             setType('RIDE');
             setSubType('REQUEST');
@@ -46,9 +51,12 @@ const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) 
     setLoading(true);
 
     // 1. Determine Title Prefix based on type
-    const titlePrefix = type === 'WALK' 
-      ? "Safe Walk to" 
-      : (type === 'RIDE' ? (subType === 'OFFER' ? "Offering Ride to" : "Need Ride to") : "Errand:");
+    let titlePrefix = "Request:";
+    if (type === 'WALK') titlePrefix = "Safe Walk:";
+    if (type === 'RIDE') titlePrefix = subType === 'OFFER' ? "Offering Ride to" : "Need Ride to";
+    if (type === 'ERRAND') titlePrefix = "Errand Run:";
+    if (type === 'FOOD') titlePrefix = "Food Pool:"; // 🔥 PS Requirement
+    if (type === 'ITEM') titlePrefix = "Need Item:"; // 🔥 PS Requirement
 
     // 2. Construct Payload
     const payload = {
@@ -56,7 +64,7 @@ const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) 
       subType: type === 'WALK' ? 'COMPANION' : subType,
       status: "OPEN",
       requesterId: user.uid,
-      requesterName: userProfile?.customName || user.displayName,
+      requesterName: userProfile?.customName || user.displayName || "Student",
       requesterGender: userProfile?.gender || 'Prefer not to say', // 🔥 Crucial for "Women Only" filter
       title: `${titlePrefix} ${formData.destination}`,
       destination: formData.destination,
@@ -92,20 +100,26 @@ const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) 
 
         {/* Dynamic Title */}
         <h2 className="text-2xl font-extrabold text-slate-900 mb-1">
-          {mode === 'WALK' ? 'Start Safe Walk' : (requestToEdit ? 'Update Plan' : 'New Plan')}
+          {mode === 'WALK' ? 'Start Safe Walk' : (requestToEdit ? 'Update Plan' : 'New Request')}
         </h2>
         <p className="text-slate-400 text-sm mb-8 font-medium">
-          {mode === 'WALK' ? 'Share live location with a companion.' : 'Coordinate travel & errands.'}
+          {mode === 'WALK' ? 'Share live location with a companion.' : 'Coordinate travel, food & errands.'}
         </p>
 
         {/* Category Toggle (Only show if in Default mode) */}
         {mode === 'DEFAULT' && (
-          <div className="flex bg-slate-50 p-1.5 rounded-2xl mb-6">
-            <button type="button" onClick={() => setType('RIDE')} className={`flex-1 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${type === 'RIDE' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
-              <Car size={16} /> Travel
+          <div className="flex bg-slate-50 p-1.5 rounded-2xl mb-6 overflow-x-auto">
+            <button type="button" onClick={() => setType('RIDE')} className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all ${type === 'RIDE' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
+              <Car size={14} /> Ride
             </button>
-            <button type="button" onClick={() => setType('ERRAND')} className={`flex-1 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${type === 'ERRAND' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>
-              <ShoppingBag size={16} /> Errand
+            <button type="button" onClick={() => setType('FOOD')} className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all ${type === 'FOOD' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>
+              <Utensils size={14} /> Food
+            </button>
+            <button type="button" onClick={() => setType('ITEM')} className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all ${type === 'ITEM' ? 'bg-white text-blue-500 shadow-sm' : 'text-slate-400'}`}>
+              <Package size={14} /> Item
+            </button>
+            <button type="button" onClick={() => setType('ERRAND')} className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all ${type === 'ERRAND' ? 'bg-white text-green-500 shadow-sm' : 'text-slate-400'}`}>
+              <ShoppingBag size={14} /> Task
             </button>
           </div>
         )}
@@ -127,17 +141,17 @@ const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) 
           {/* Destination Field */}
           <div className="group bg-slate-50 p-4 rounded-2xl border border-slate-100 transition focus-within:border-indigo-500 focus-within:bg-white focus-within:shadow-sm">
              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5">
-               Destination / Item
+               {type === 'FOOD' ? 'Restaurant / App' : (type === 'ITEM' ? 'Item Name' : 'Destination')}
              </label>
              <div className="flex items-center gap-3">
                 <MapPin size={20} className="text-indigo-500" />
                 <input 
-                  autoFocus
-                  required
+                  autoFocus 
+                  required 
                   className="bg-transparent w-full outline-none text-slate-900 font-bold placeholder:text-slate-300 text-base"
-                  placeholder={type === 'RIDE' ? "e.g. Bandra Station" : "e.g. 2 Coffees"}
-                  value={formData.destination}
-                  onChange={(e) => setFormData({...formData, destination: e.target.value})}
+                  placeholder={type === 'FOOD' ? "e.g. Domino's, Blinkit" : (type === 'ITEM' ? "e.g. Kettle, USB Type-C" : "e.g. Bandra Station")}
+                  value={formData.destination} 
+                  onChange={(e) => setFormData({...formData, destination: e.target.value})} 
                 />
              </div>
           </div>
@@ -150,30 +164,30 @@ const RideModal = ({ isOpen, onClose, user, requestToEdit, userProfile, mode }) 
              <div className="flex items-center gap-3">
                 <Clock size={20} className="text-indigo-500" />
                 <input 
-                  type="text"
+                  type="text" 
                   className="bg-transparent w-full outline-none text-slate-900 font-bold placeholder:text-slate-300 text-base"
-                  placeholder="e.g. Now, 5:30 PM"
-                  value={formData.time}
-                  onChange={(e) => setFormData({...formData, time: e.target.value})}
+                  placeholder="e.g. Now, 5:30 PM" 
+                  value={formData.time} 
+                  onChange={(e) => setFormData({...formData, time: e.target.value})} 
                 />
              </div>
           </div>
 
           {/* Details Field */}
           <textarea 
-            rows="3"
+            rows="3" 
             className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 outline-none focus:border-indigo-500 focus:bg-white text-sm text-slate-600 font-medium resize-none placeholder:text-slate-400 transition"
-            placeholder="Add details (e.g. 'Have 2 seats', 'Swiggy order')"
-            value={formData.description}
-            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            placeholder={type === 'FOOD' ? "Join my order? No delivery fee!" : (type === 'ITEM' ? "Need for 2 hours." : "Add details...")}
+            value={formData.description} 
+            onChange={(e) => setFormData({...formData, description: e.target.value})} 
           />
 
           {/* Submit Button */}
           <button 
-            disabled={loading}
+            disabled={loading} 
             className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-xl flex justify-center items-center gap-2 transform active:scale-95 transition-all ${mode === 'WALK' ? 'bg-indigo-900 hover:bg-indigo-800' : 'bg-indigo-600 hover:bg-indigo-700'}`}
           >
-            {loading ? "Posting..." : (mode === 'WALK' ? <span>Start Safe Walk <Footprints size={20} className="inline"/></span> : <span>Post Plan <ArrowRight size={20} className="inline"/></span>)}
+            {loading ? "Posting..." : (mode === 'WALK' ? <span>Start Safe Walk <Footprints size={20} className="inline"/></span> : <span>Post Request <ArrowRight size={20} className="inline"/></span>)}
           </button>
         </form>
       </div>
