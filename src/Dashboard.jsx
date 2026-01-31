@@ -5,31 +5,31 @@ import RideModal from './RideModal';
 import { UniGoLogo } from './UniGoLogo'; 
 import { auth, db } from './firebase';
 import { collection, query, orderBy, onSnapshot, limit, addDoc, deleteDoc, doc, serverTimestamp, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore';
-import { LogOut, Bell, Zap, MessageSquare, Home, Plus, Car, Coffee, AlertTriangle, Search, Trash2, Edit2, User, MapPin, Camera, Save, X, Send, Clock, RefreshCw, CheckCircle2, Utensils, Check, MessageCircle, ChevronLeft } from 'lucide-react';
+import { LogOut, Bell, Zap, MessageSquare, Home, Plus, Car, Coffee, AlertTriangle, Search, Trash2, Edit2, User, MapPin, Camera, Save, X, Send, Clock, RefreshCw, Check, MessageCircle, ChevronLeft, Utensils, Footprints, Shield, Eye, CheckCircle, Navigation, Package, HandHeart } from 'lucide-react';
 
 const Dashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('HOME');
   const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState('DEFAULT'); 
   const [requestToEdit, setRequestToEdit] = useState(null);
   const [requests, setRequests] = useState([]);
-  const [filter, setFilter] = useState('ALL');
+  const [filter, setFilter] = useState('ALL'); 
   const [searchText, setSearchText] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
-  
-  // NEW: State for Private Chat
-  const [currentChat, setCurrentChat] = useState(null); // { id: 'userA_userB', name: 'Rohan', recipientId: 'xyz' }
+  const [currentChat, setCurrentChat] = useState(null); 
 
   const [userProfile, setUserProfile] = useState({
     customName: user.displayName,
     photoURL: user.photoURL,
     bio: "Student at Uni",
+    gender: "Prefer not to say", 
     major: "Undeclared",
     year: "1st Year"
   });
 
-  // Fetch Data
+  // --- DATA FETCHING ---
   useEffect(() => {
-    const q = query(collection(db, "requests"), orderBy("createdAt", "desc"), limit(50));
+    const q = query(collection(db, "requests"), orderBy("createdAt", "desc"), limit(60));
     const unsubscribe = onSnapshot(q, (snap) => setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => unsubscribe();
   }, []);
@@ -43,53 +43,59 @@ const Dashboard = ({ user }) => {
     fetchProfile();
   }, [user.uid]);
 
-  // Actions
+  // --- ACTIONS ---
   const handleDelete = async (id) => { if (window.confirm("Delete this?")) await deleteDoc(doc(db, "requests", id)); };
-  const handleEdit = (req) => { setRequestToEdit(req); setShowModal(true); };
-  const openNewRequest = () => { setRequestToEdit(null); setShowModal(true); };
   
+  const handleResolveSOS = async (req) => {
+    if (window.confirm("Mark as RESOLVED? This notifies admins you are safe.")) {
+      await updateDoc(doc(db, "requests", req.id), { status: "RESOLVED", isPriority: false });
+    }
+  };
+
+  const handleEdit = (req) => { setRequestToEdit(req); setShowModal(true); setModalMode('DEFAULT'); };
+  
+  // Custom Openers
+  const openNewRequest = () => { setRequestToEdit(null); setShowModal(true); setModalMode('DEFAULT'); };
+  const openErrandRequest = () => { setRequestToEdit(null); setShowModal(true); setModalMode('ERRAND'); };
+  const startSafeWalk = () => { setRequestToEdit(null); setShowModal(true); setModalMode('WALK'); }; 
+
   const handleJoin = async (req) => {
     const isJoined = req.participants?.includes(user.uid);
     const reqRef = doc(db, "requests", req.id);
+    
+    // Logic for Join Text
+    const actionText = isJoined ? "Leave" : (req.type === 'WALK' ? "Join Walk" : (req.type === 'ERRAND' ? "Accept Task" : "Book Seat"));
+
     try {
       if (isJoined) {
-        if (!window.confirm("Cancel your booking?")) return;
+        if (!window.confirm(`Cancel: ${actionText}?`)) return;
         await updateDoc(reqRef, { participants: arrayRemove(user.uid) });
       } else {
+        if (!window.confirm(`Confirm: ${actionText}?`)) return;
         await updateDoc(reqRef, { participants: arrayUnion(user.uid) });
-        // Auto-open chat on join
-        handleConnect(req); 
+        handleConnect(req); // Auto open chat
       }
     } catch (e) { alert(e.message); }
   };
 
-  // 🔥 NEW: START PRIVATE CHAT FUNCTION
   const handleConnect = (req) => {
-    // 1. Determine the other person
-    const isMe = req.requesterId === user.uid;
-    // If I am the owner, I can't chat with myself (logic for listing participants would go here in a full app)
-    // For this hackathon, "Connect" always chats with the REQUEST OWNER
-    if (isMe) {
-        alert("You created this request! Wait for others to message you."); 
-        return;
-    }
-
-    const partnerId = req.requesterId;
-    const partnerName = req.requesterName;
-    
-    // 2. Create Unique Chat ID (Alphabetical Order ensures UserA_UserB is same as UserB_UserA)
-    const chatId = [user.uid, partnerId].sort().join("_");
-
-    // 3. Open Chat
-    setCurrentChat({ id: chatId, name: partnerName, partnerId: partnerId });
+    if (req.requesterId === user.uid) { alert("You created this request!"); return; }
+    const chatId = [user.uid, req.requesterId].sort().join("_");
+    setCurrentChat({ id: chatId, name: req.requesterName, partnerId: req.requesterId });
     setActiveTab('CHAT');
   };
 
   const handleSOS = async () => {
-    if (!window.confirm("🚨 SEND PRIORITY EMERGENCY ALERT?")) return;
+    if (!window.confirm("🚨 TRIGGER SOS? This alerts everyone nearby.")) return;
     try {
-      await addDoc(collection(db, "requests"), { type: "SOS", status: "CRITICAL", requesterId: user.uid, requesterName: userProfile.customName || user.displayName, title: "🚨 URGENT: SOS HELP!", description: "Emergency! High Priority Assistance Needed.", location: [19.0760 + (Math.random()-0.5)*0.005, 72.8777 + (Math.random()-0.5)*0.005], isPriority: true, createdAt: serverTimestamp() });
-      alert("PRIORITY ALERT SENT!");
+      await addDoc(collection(db, "requests"), { 
+        type: "SOS", status: "CRITICAL", requesterId: user.uid, 
+        requesterName: userProfile.customName || user.displayName, 
+        requesterGender: userProfile.gender,
+        title: "🚨 URGENT: SOS HELP!", description: "Emergency! High Priority.", 
+        location: [19.0760 + (Math.random()-0.5)*0.005, 72.8777 + (Math.random()-0.5)*0.005], 
+        isPriority: true, createdAt: serverTimestamp() 
+      });
     } catch (e) { alert(e.message); }
   };
 
@@ -98,87 +104,249 @@ const Dashboard = ({ user }) => {
       case 'CHAT': return <ChatPage user={user} userProfile={userProfile} currentChat={currentChat} setCurrentChat={setCurrentChat} requests={requests} />;
       case 'ACTIVITY': return <ActivityPage user={user} requests={requests} handleDelete={handleDelete} handleEdit={handleEdit} />;
       case 'PROFILE': return <ProfilePage user={user} requests={requests} userProfile={userProfile} setUserProfile={setUserProfile} />;
-      default: return <HomeFeed user={user} requests={requests} filter={filter} setFilter={setFilter} searchText={searchText} setSearchText={setSearchText} handleDelete={handleDelete} handleEdit={handleEdit} handleSOS={handleSOS} openNewRequest={openNewRequest} handleJoin={handleJoin} handleConnect={handleConnect} />;
+      case 'ADMIN': return <AdminDashboard requests={requests} />; 
+      default: return <HomeFeed user={user} requests={requests} filter={filter} setFilter={setFilter} searchText={searchText} setSearchText={setSearchText} handleDelete={handleDelete} handleEdit={handleEdit} handleSOS={handleSOS} openNewRequest={openNewRequest} openErrandRequest={openErrandRequest} startSafeWalk={startSafeWalk} handleJoin={handleJoin} handleConnect={handleConnect} handleResolveSOS={handleResolveSOS} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F3F4F6] text-gray-800 font-sans pb-24 relative selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-[#F8FAFC] font-sans pb-28 relative selection:bg-indigo-500 selection:text-white overflow-x-hidden">
+      {/* Background Aura */}
+      <div className="fixed top-[-20%] left-[-10%] w-[800px] h-[800px] bg-purple-200/30 rounded-full blur-[120px] pointer-events-none z-0"></div>
+      <div className="fixed bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-blue-200/30 rounded-full blur-[100px] pointer-events-none z-0"></div>
       
       {/* HEADER */}
-      <div className="sticky top-0 z-[1000] bg-white/90 backdrop-blur-xl px-4 pt-10 pb-3 border-b border-gray-200/50 flex justify-between items-center shadow-sm">
-        <div className="w-10"></div>
-        <div onClick={() => setActiveTab('HOME')} className="cursor-pointer hover:opacity-80 transition"><UniGoLogo className="h-9 w-auto" /></div>
-        <div className="w-10 flex justify-end relative">
-          <button onClick={() => setShowNotifications(!showNotifications)} className="p-2 bg-white border border-gray-100 rounded-full shadow-sm text-gray-600 relative hover:bg-gray-50 transition active:scale-95">
+      <div className="sticky top-0 z-[1000] bg-white/70 backdrop-blur-xl border-b border-white/50 px-8 py-4 flex justify-between items-center shadow-sm">
+        {/* FIXED: Removed extra text, just the logo now */}
+        <div onClick={() => setActiveTab('HOME')} className="cursor-pointer hover:opacity-80 transition flex items-center gap-2">
+            <UniGoLogo className="h-8 w-auto" />
+        </div>
+        <div className="flex items-center gap-4 relative">
+          <button onClick={() => setShowNotifications(!showNotifications)} className="p-3 bg-white border border-gray-100 rounded-full text-slate-600 hover:text-indigo-600 transition relative shadow-sm">
             <Bell size={20} />
-            {requests.some(r => r.type === 'SOS') && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border border-white animate-pulse"></span>}
+            {requests.some(r => r.type === 'SOS' && r.status !== 'RESOLVED') && <span className="absolute top-2.5 right-3 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-white"></span>}
           </button>
+          <div onClick={() => setActiveTab('PROFILE')} className="flex items-center gap-3 cursor-pointer group">
+             <img src={userProfile.photoURL} className="w-10 h-10 rounded-full border-2 border-white shadow-md group-hover:scale-105 transition object-cover" alt="Profile" />
+             <div className="hidden md:block text-right">
+                <p className="text-sm font-bold text-slate-800 leading-none">{userProfile.customName.split(' ')[0]}</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{userProfile.major || 'Student'}</p>
+             </div>
+          </div>
+          
+          {/* Notifications Panel */}
           {showNotifications && (
-            <div className="absolute top-14 right-[-10px] w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 p-0 z-[1001] animate-in fade-in slide-in-from-top-2 overflow-hidden ring-1 ring-black/5">
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Smart Alerts</p><button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600"><X size={14}/></button></div>
-                <div className="max-h-72 overflow-y-auto">
-                  {requests.slice(0, 5).map(r => (
-                    <div key={r.id} className={`px-4 py-3 border-b border-gray-50 flex gap-3 items-start hover:bg-gray-50 transition ${r.type === 'SOS' ? 'bg-red-50/50' : ''}`}>
-                      <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${r.type === 'SOS' ? 'bg-red-500 animate-pulse' : (r.type === 'RIDE' ? 'bg-indigo-500' : 'bg-orange-500')}`}></div>
-                      <div className="flex-1"><p className="text-xs text-gray-800 leading-snug"><span className="font-bold">{r.requesterName?.split(' ')[0]}</span> {r.type === 'SOS' ? ' triggered SOS!' : `: ${r.title}`}</p><p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><Clock size={10}/> {r.time || "Just now"}</p></div>
+            <div className="absolute top-16 right-0 w-96 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 p-0 z-[1001] animate-in fade-in slide-in-from-top-2 overflow-hidden ring-1 ring-black/5">
+                <div className="bg-slate-50/80 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                   <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Recent Activity</p>
+                   <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {requests.filter(r => r.status !== 'RESOLVED').slice(0, 5).map(r => (
+                    <div key={r.id} className={`px-6 py-4 border-b border-slate-50 flex gap-4 items-start hover:bg-slate-50 transition ${r.type === 'SOS' ? 'bg-red-50/20' : ''}`}>
+                      <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${r.type === 'SOS' ? 'bg-red-500 animate-pulse' : 'bg-indigo-500'}`}></div>
+                      <div className="flex-1">
+                         <p className="text-sm text-slate-700 leading-snug">
+                            <span className="font-bold text-slate-900">{r.requesterName?.split(' ')[0]}</span> 
+                            {r.type === 'SOS' ? ' needs HELP!' : (r.type === 'RIDE' ? ' posted a ride.' : ' needs an item.')}
+                         </p>
+                         <p className="text-[11px] text-slate-400 mt-1 font-medium">{r.time || "Just now"}</p>
+                      </div>
                     </div>
                   ))}
-                  {requests.length === 0 && <div className="p-4 text-center text-xs text-gray-400">No new alerts</div>}
+                  {requests.filter(r => r.status !== 'RESOLVED').length === 0 && <div className="p-8 text-center text-xs text-slate-400">All caught up!</div>}
                 </div>
             </div>
           )}
         </div>
       </div>
 
-      <div className="px-4 mt-6 relative z-0">{renderContent()}</div>
+      <div className="px-6 mt-8 max-w-[1600px] mx-auto relative z-10">{renderContent()}</div>
 
-      {/* BOTTOM NAV */}
-      <div className="fixed bottom-6 left-4 right-4 bg-white/90 backdrop-blur-xl border border-white/40 shadow-2xl rounded-3xl p-3 z-[999] flex justify-between items-center">
+      {/* FLOATING BOTTOM NAV */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-2xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-full px-6 py-3 z-[999] flex items-center gap-8">
         <NavBtn id="home-btn" icon={<Home size={24} />} active={activeTab === 'HOME'} onClick={() => setActiveTab('HOME')} />
         <NavBtn icon={<Zap size={24} />} active={activeTab === 'ACTIVITY'} onClick={() => setActiveTab('ACTIVITY')} />
-        <button onClick={openNewRequest} className="relative -top-10 h-16 w-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full text-white shadow-xl shadow-indigo-300 flex items-center justify-center transform hover:scale-110 transition border-[6px] border-[#F3F4F6]"><Plus size={32} /></button>
+        
+        <button onClick={openNewRequest} className="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-600 rounded-full text-white shadow-xl shadow-indigo-300 flex items-center justify-center transform hover:scale-110 active:scale-95 transition -mt-10 border-[6px] border-[#F8FAFC]">
+            <Plus size={32} />
+        </button>
+
         <NavBtn icon={<MessageSquare size={24} />} active={activeTab === 'CHAT'} onClick={() => setActiveTab('CHAT')} />
-        <NavBtn icon={<User size={24} />} active={activeTab === 'PROFILE'} onClick={() => setActiveTab('PROFILE')} />
+        <NavBtn icon={<User size={24} />} active={activeTab === 'PROFILE'} onClick={() => setActiveTab('PROFILE')} onDoubleClick={() => setActiveTab('ADMIN')} />
       </div>
 
-      <RideModal isOpen={showModal} onClose={() => setShowModal(false)} user={user} requestToEdit={requestToEdit} userProfile={userProfile} />
+      <RideModal isOpen={showModal} onClose={() => setShowModal(false)} user={user} requestToEdit={requestToEdit} userProfile={userProfile} mode={modalMode} />
     </div>
   );
 };
 
-// ================== SUB-COMPONENTS ==================
+// ================== PAGE COMPONENTS ==================
 
-// --- 🔥 NEW PRIVATE CHAT COMPONENT ---
+// --- 1. HOME FEED ---
+const HomeFeed = ({ user, requests, filter, setFilter, searchText, setSearchText, handleDelete, handleEdit, handleSOS, openNewRequest, openErrandRequest, startSafeWalk, handleJoin, handleConnect, handleResolveSOS }) => {
+  const filtered = requests.filter(req => {
+    if (req.status === 'RESOLVED') return false;
+    if (filter === 'WOMEN') return (req.requesterGender === 'Female' || req.requesterGender === 'Non-binary') && (req.title?.toLowerCase() || "").includes(searchText.toLowerCase());
+    const matchesFilter = filter === 'ALL' || req.type === filter || (filter === 'ALL' && req.type === 'SOS') || (filter === 'ALL' && req.type === 'WALK');
+    const matchesSearch = (req.title?.toLowerCase() || "").includes(searchText.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  return (
+    <div className="grid grid-cols-12 gap-8 pb-20">
+      
+      {/* 1. LEFT SIDEBAR (Filters) - Col 2 */}
+      <div className="hidden lg:block col-span-2 space-y-6 sticky top-28 h-fit">
+         <div className="space-y-2">
+            <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest pl-2">Filter Feed</h3>
+            <div className="flex flex-col gap-2">
+               {['ALL', 'RIDE', 'ERRAND', 'WALK', 'SOS', 'WOMEN'].map(t => (
+                  <button key={t} onClick={() => setFilter(t)} className={`text-left px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center justify-between group ${filter === t ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-white/80 border border-slate-100'}`}>
+                     {t === 'WOMEN' ? 'Women Only' : (t.charAt(0) + t.slice(1).toLowerCase())}
+                     {filter === t && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>}
+                  </button>
+               ))}
+            </div>
+         </div>
+      </div>
+
+      {/* 2. MAIN CONTENT - Col 10 */}
+      <div className="col-span-12 lg:col-span-10 space-y-8">
+         
+         {/* Map Section */}
+         <div className="h-[400px] w-full bg-white rounded-[40px] overflow-hidden shadow-sm border border-white/50 relative group z-0">
+            <div className="absolute inset-0 z-0"><MapComponent requests={requests} /></div>
+            <div className="absolute bottom-6 left-6 z-10 pointer-events-none">
+                <div className="bg-white/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-lg border border-white/50">
+                    <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Hi, {user.displayName?.split(' ')[0]}.</h1>
+                    <p className="text-slate-500 font-bold text-xs flex items-center gap-2 mt-1">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> {requests.length} active users
+                    </p>
+                </div>
+            </div>
+         </div>
+
+         {/* SEARCH BAR (Full Width) */}
+         <div className="bg-white/80 backdrop-blur-2xl p-2 rounded-[24px] shadow-sm border border-white/50 flex items-center gap-4 hover:shadow-md transition-all">
+              <div className="h-12 w-12 bg-slate-50 rounded-[20px] flex items-center justify-center text-slate-400 shrink-0">
+                  <Search size={20} />
+              </div>
+              <input 
+                className="w-full bg-transparent border-none text-base font-semibold text-slate-700 placeholder:text-slate-400 outline-none h-full" 
+                placeholder="Search for rides to Bandra, coffee runs, or safe walks..." 
+                value={searchText} 
+                onChange={e => setSearchText(e.target.value)}
+              />
+              <div className="hidden md:flex pr-4 text-xs font-bold text-slate-300 uppercase tracking-widest">
+                  {filtered.length} Results
+              </div>
+         </div>
+
+         {/* COMMAND CENTER (2x2 Grid) */}
+         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <ActionCard title="Get a Ride" subtitle="Pool & Travel" icon={<Car size={24}/>} color="blue" onClick={openNewRequest} />
+            <ActionCard title="Errands" subtitle="Deliveries" icon={<Package size={24}/>} color="orange" onClick={openErrandRequest} />
+            <ActionCard title="Safe Walk" subtitle="Virtual Companion" icon={<Footprints size={24}/>} color="green" onClick={startSafeWalk} />
+            <ActionCard title="SOS Alert" subtitle="Emergency" icon={<AlertTriangle size={24}/>} color="red" onClick={handleSOS} />
+         </div>
+
+         {/* FEED LIST */}
+         <div className="space-y-4">
+            <div className="flex justify-between items-end px-2">
+                <h3 className="text-xl font-extrabold text-slate-900">Live Feed</h3>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Real-time</span>
+            </div>
+            {filtered.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-center bg-white/50 rounded-[40px] border border-white/50">
+                    <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm"><Search size={32} className="text-slate-300"/></div>
+                    <p className="text-slate-400 font-medium">No active requests found.</p>
+                </div>
+            )}
+            {filtered.map(req => <RequestCard key={req.id} req={req} user={user} handleDelete={handleDelete} handleEdit={handleEdit} handleJoin={handleJoin} handleConnect={handleConnect} handleResolveSOS={handleResolveSOS} />)}
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const ActionCard = ({ title, subtitle, icon, color, onClick }) => {
+    const colors = {
+        blue: 'bg-blue-50 text-blue-600',
+        orange: 'bg-orange-50 text-orange-600',
+        green: 'bg-green-50 text-green-600',
+        red: 'bg-red-50 text-red-600'
+    };
+    return (
+        <div onClick={onClick} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)] transition cursor-pointer group flex flex-col justify-between h-44 hover:translate-y-[-4px]">
+            <div className={`w-14 h-14 ${colors[color]} rounded-2xl flex items-center justify-center group-hover:scale-110 transition shadow-sm`}>{icon}</div>
+            <div>
+                <h3 className="font-extrabold text-lg text-slate-800 leading-tight">{title}</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wide">{subtitle}</p>
+            </div>
+        </div>
+    )
+}
+
+// --- HELPER COMPONENTS ---
+const RequestCard = ({ req, user, handleDelete, handleEdit, handleJoin, handleConnect, handleResolveSOS }) => {
+  const isMe = req.requesterId === user.uid;
+  const isJoined = req.participants?.includes(user.uid);
+  const isResolved = req.status === 'RESOLVED';
+  
+  const getActionLabel = () => {
+      if (req.type === 'WALK') return isJoined ? "Leave Walk" : "Join Walk";
+      if (req.type === 'ERRAND') return isJoined ? "Drop Task" : "Accept Task";
+      if (req.subType === 'OFFER') return isJoined ? "Cancel Seat" : "Book Seat";
+      return isJoined ? "Cancel Offer" : "Offer Ride";
+  };
+
+  return (
+    <div className={`bg-white p-6 rounded-[32px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border flex items-center gap-6 transition-all hover:translate-y-[-2px] group ${req.type === 'SOS' ? 'border-red-100 bg-red-50/10' : 'border-slate-100'} ${isResolved ? 'opacity-50 grayscale' : ''}`}>
+      <div className={`h-16 w-16 rounded-[20px] flex items-center justify-center text-2xl shrink-0 shadow-sm ${req.type === 'RIDE' ? 'bg-indigo-50 text-indigo-600' : (req.type === 'SOS' ? 'bg-red-50 text-red-600 animate-pulse' : (req.type === 'WALK' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'))}`}>
+        {req.type === 'RIDE' ? <Car size={28} /> : (req.type === 'SOS' ? <AlertTriangle size={28} /> : (req.type === 'WALK' ? <Footprints size={28}/> : <Utensils size={28} />))}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1.5">
+           <span className="text-[10px] font-extrabold tracking-widest bg-slate-100 text-slate-500 px-2 py-1 rounded-lg uppercase">{req.subType || req.type}</span>
+           {req.time && <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1"><Clock size={12}/> {req.time}</span>}
+        </div>
+        <h4 className={`font-bold text-lg ${req.type === 'SOS' ? 'text-red-600' : 'text-slate-800'}`}>{isResolved ? '[RESOLVED] ' : ''}{req.title}</h4>
+        <p className="text-sm text-slate-500 mt-1 truncate font-medium">{req.description}</p>
+        {req.participants?.length > 0 && <div className="mt-3 flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 w-fit px-3 py-1 rounded-full"><User size={12}/> {req.participants.length} Active</div>}
+      </div>
+      <div className="flex flex-col gap-2 pl-6 border-l border-slate-50 items-center justify-center min-w-[100px]">
+        {isMe ? (
+          <>{req.type === 'SOS' && !isResolved ? (<button onClick={() => handleResolveSOS(req)} className="p-3 rounded-2xl bg-green-100 text-green-700 hover:bg-green-200 transition" title="Mark Safe"><CheckCircle size={20}/></button>) : (<button onClick={() => handleEdit(req)} className="p-3 rounded-2xl bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition"><Edit2 size={20} /></button>)}<button onClick={() => handleDelete(req.id)} className="p-3 rounded-2xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"><Trash2 size={20} /></button></>
+        ) : (req.subType === 'OFFER' || req.type === 'ERRAND' || req.type === 'WALK' || req.subType === 'REQUEST') && (
+          <div className="flex flex-col gap-2">
+            <button onClick={() => handleJoin(req)} className={`h-10 px-5 rounded-xl flex items-center justify-center transition font-bold text-xs gap-1.5 shadow-sm whitespace-nowrap ${isJoined ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md'}`}>
+                {isJoined ? <X size={14}/> : <Check size={14}/>} {getActionLabel()}
+            </button>
+            {isJoined && <button onClick={() => handleConnect(req)} className="h-10 w-full rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition"><MessageCircle size={20} /></button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- CHAT PAGE ---
 const ChatPage = ({ user, userProfile, currentChat, setCurrentChat, requests }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const scrollRef = useRef();
 
-  // 1. Identify active contacts based on requests user is involved in
-  const activeContacts = requests.filter(r => 
-    (r.requesterId === user.uid && r.participants?.length > 0) || // I requested, someone joined
-    (r.participants?.includes(user.uid)) // I joined someone else's
-  ).map(r => ({
-    // If I am requester, chat with first participant (simplified). If I joined, chat with requester.
+  const activeContacts = requests.filter(r => (r.requesterId === user.uid && r.participants?.length > 0) || (r.participants?.includes(user.uid))).map(r => ({
     uid: r.requesterId === user.uid ? r.participants[0] : r.requesterId,
     name: r.requesterId === user.uid ? "Participant" : r.requesterName,
     reqTitle: r.title
   }));
-
-  // Remove duplicates
   const uniqueContacts = [...new Map(activeContacts.map(item => [item.uid, item])).values()];
 
   useEffect(() => {
     if (!currentChat) return;
-    
-    // Query messages specifically for THIS chat ID (userA_userB)
-    const q = query(
-        collection(db, "chats", currentChat.id, "messages"), 
-        orderBy("createdAt", "asc"), 
-        limit(50)
-    );
-    
+    const q = query(collection(db, "chats", currentChat.id, "messages"), orderBy("createdAt", "asc"), limit(50));
     const unsub = onSnapshot(q, (snap) => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
@@ -189,57 +357,31 @@ const ChatPage = ({ user, userProfile, currentChat, setCurrentChat, requests }) 
   const sendMsg = async (e) => {
     e.preventDefault();
     if (!input.trim() || !currentChat) return;
-    
-    // Save to sub-collection: chats -> [chatID] -> messages
-    await addDoc(collection(db, "chats", currentChat.id, "messages"), {
-      text: input, 
-      uid: user.uid, 
-      displayName: userProfile.customName || user.displayName, 
-      createdAt: serverTimestamp()
-    });
+    await addDoc(collection(db, "chats", currentChat.id, "messages"), { text: input, uid: user.uid, displayName: userProfile.customName || user.displayName, createdAt: serverTimestamp() });
     setInput('');
   };
 
-  // --- VIEW 1: CONTACT LIST (If no chat selected) ---
   if (!currentChat) {
       return (
-        <div className="flex flex-col h-[75vh] bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                <h2 className="font-bold text-gray-800 text-lg">Messages</h2>
-                <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full">{uniqueContacts.length} Active</span>
+        <div className="flex flex-col h-[75vh] bg-white rounded-[32px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] border border-white/50 overflow-hidden">
+            <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-white/50 backdrop-blur-md">
+                <h2 className="font-extrabold text-slate-800 text-xl">Messages</h2>
+                <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-wider">{uniqueContacts.length} Active</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50/30">
                 {uniqueContacts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                        <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-4 animate-pulse">
-                            <MessageSquare size={32} className="text-indigo-300"/>
-                        </div>
-                        <h3 className="font-bold text-gray-800 text-lg mb-2">No Active Chats</h3>
-                        <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">
-                            Chats start automatically when you <b>Book a Ride</b> or <b>Accept a Request</b> from the Home Feed.
-                        </p>
-                        <button className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200" onClick={() => document.getElementById('home-btn').click()}>
-                            Go to Feed
-                        </button>
+                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm"><MessageSquare size={28} className="text-slate-300"/></div>
+                        <h3 className="font-bold text-slate-900 text-lg mb-2">No Chats Yet</h3>
+                        <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8">Connect with others by booking rides or accepting errands.</p>
+                        <button className="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition" onClick={() => document.getElementById('home-btn').click()}>Find Connections</button>
                     </div>
                 ) : (
-                    uniqueContacts.map(contact => (
-                        <button 
-                            key={contact.uid} 
-                            onClick={() => setCurrentChat({ 
-                                id: [user.uid, contact.uid].sort().join("_"), 
-                                name: contact.name 
-                            })}
-                            className="w-full text-left p-4 hover:bg-gray-50 rounded-2xl transition flex items-center gap-4 border-b border-gray-50/50 group"
-                        >
-                            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md group-hover:scale-110 transition">
-                                {contact.name.charAt(0)}
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="font-bold text-gray-800 group-hover:text-indigo-600 transition">{contact.name}</h4>
-                                <p className="text-xs text-gray-500 truncate w-48 font-medium">Connected via: {contact.reqTitle}</p>
-                            </div>
-                            <div className="text-gray-300 group-hover:text-indigo-500 transition"><MessageCircle size={20}/></div>
+                    uniqueContacts.map(c => (
+                        <button key={c.uid} onClick={() => setCurrentChat({ id: [user.uid, c.uid].sort().join("_"), name: c.name })} className="w-full text-left p-4 hover:bg-white hover:shadow-sm rounded-[24px] transition flex items-center gap-4 group border border-transparent hover:border-slate-100">
+                            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">{c.name.charAt(0)}</div>
+                            <div className="flex-1"><h4 className="font-bold text-slate-800">{c.name}</h4><p className="text-xs text-slate-400 truncate w-48 mt-0.5">{c.reqTitle}</p></div>
+                            <ChevronLeft className="rotate-180 text-slate-300 group-hover:text-indigo-500 transition" size={20}/>
                         </button>
                     ))
                 )}
@@ -248,183 +390,95 @@ const ChatPage = ({ user, userProfile, currentChat, setCurrentChat, requests }) 
       );
   }
 
-  // --- VIEW 2: CHAT ROOM (If chat selected) ---
-  return (
-    <div className="flex flex-col h-[75vh] bg-[#F9FAFB] rounded-[32px] shadow-lg border border-white overflow-hidden relative">
-      {/* Chat Header */}
-      <div className="p-4 bg-white/90 backdrop-blur-md border-b border-gray-100 flex items-center gap-3 shadow-sm z-10">
-        <button onClick={() => setCurrentChat(null)} className="p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-full"><ChevronLeft size={24}/></button>
-        <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold">{currentChat.name.charAt(0)}</div>
-        <div><h2 className="font-bold text-gray-800">{currentChat.name}</h2><p className="text-xs text-green-600 font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Online</p></div>
-      </div>
+  const bgPattern = `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%239C92AC' fill-opacity='0.05'%3E%3Ccircle cx='1' cy='1' r='1'/%3E%3C/g%3E%3C/svg%3E")`;
 
-      {/* Messages */}
+  return (
+    <div className="flex flex-col h-[75vh] bg-[#f8fafc] rounded-[32px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] border border-slate-100 overflow-hidden relative" style={{backgroundImage: bgPattern}}>
+      <div className="p-4 bg-white/90 backdrop-blur-md border-b border-slate-100 flex items-center gap-3 shadow-sm z-10">
+        <button onClick={() => setCurrentChat(null)} className="p-2 -ml-2 text-slate-400 hover:bg-slate-100 rounded-full transition"><ChevronLeft size={24}/></button>
+        <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md">{currentChat.name.charAt(0)}</div>
+        <div><h2 className="font-bold text-slate-800">{currentChat.name}</h2><p className="text-[10px] text-green-600 font-bold uppercase tracking-wider flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online</p></div>
+      </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3 z-0">
         {messages.map(msg => {
           const isMe = msg.uid === user.uid;
-          return (
-            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-              <div className={`px-5 py-3 rounded-2xl max-w-[80%] text-sm shadow-sm ${isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'}`}>
-                 {msg.text}
-                 <span className={`text-[10px] block mt-1 opacity-70 text-right ${isMe ? 'text-indigo-100' : 'text-gray-400'}`}>
-                    {msg.createdAt ? "Just now" : "Sending..."}
-                 </span>
-              </div>
-            </div>
-          );
+          return <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}><div className={`px-5 py-3 rounded-[20px] max-w-[80%] text-sm shadow-sm ${isMe ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm'}`}>{msg.text}</div></div>;
         })}
         <div ref={scrollRef}></div>
       </div>
-
-      {/* Input */}
-      <form onSubmit={sendMsg} className="p-3 bg-white border-t border-gray-100 flex gap-2 z-10">
-        <input className="flex-1 bg-gray-100 border-0 rounded-full px-5 py-3 outline-none focus:ring-2 ring-indigo-400 font-medium" placeholder="Type message..." value={input} onChange={e => setInput(e.target.value)} />
-        <button type="submit" className={`p-3 rounded-full transition-all ${input.trim() ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-200 text-gray-400'}`} disabled={!input.trim()}><Send size={20}/></button>
-      </form>
+      <form onSubmit={sendMsg} className="p-4 bg-white border-t border-slate-100 flex gap-2 z-10"><input className="flex-1 bg-slate-50 border-0 rounded-full px-6 py-3.5 outline-none focus:ring-2 ring-indigo-100 font-medium transition placeholder:text-slate-400" placeholder="Type a message..." value={input} onChange={e => setInput(e.target.value)} /><button type="submit" className={`p-3.5 rounded-full transition-all transform active:scale-95 ${input.trim() ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-200 text-slate-400'}`} disabled={!input.trim()}><Send size={20} className={input.trim() ? '-rotate-45 ml-0.5 mb-0.5' : ''}/></button></form>
     </div>
   );
 };
 
+// --- PROFILE PAGE ---
 const ProfilePage = ({ user, requests, userProfile, setUserProfile }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editData, setEditData] = useState(userProfile);
   const myCount = requests ? requests.filter(r => r.requesterId === user.uid).length : 0;
+  
   const refreshAvatar = () => { const seed = Math.random().toString(36).substring(7); setEditData({ ...editData, photoURL: `https://api.dicebear.com/7.x/notionists/svg?seed=${seed}&backgroundColor=c0aede,b6e3f4` }); };
-  const handleSave = async () => { setLoading(true); try { await setDoc(doc(db, "users", user.uid), editData, { merge: true }); setUserProfile(editData); setIsEditing(false); } catch (e) { alert("Error saving: " + e.message); } setLoading(false); };
+  const handleSave = async () => { setLoading(true); try { await setDoc(doc(db, "users", user.uid), editData, { merge: true }); setUserProfile(editData); setIsEditing(false); } catch (e) { alert(e.message); } setLoading(false); };
+
   return (
-    <div className="flex flex-col items-center pt-6 pb-20">
-      <div className="w-full bg-white rounded-[40px] p-8 shadow-xl border border-gray-100 relative overflow-hidden">
+    <div className="flex flex-col items-center pt-8 pb-20 max-w-2xl mx-auto">
+      <div className="w-full bg-white rounded-[40px] p-8 shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-slate-100 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-indigo-500 to-purple-600 opacity-10"></div>
         <div className="relative flex flex-col items-center">
            <div className="relative group">
-              <img src={isEditing ? editData.photoURL : userProfile.photoURL} className="w-32 h-32 rounded-full border-[6px] border-white shadow-2xl bg-white" alt="Profile" />
-              {isEditing && <button onClick={refreshAvatar} className="absolute bottom-0 right-0 p-2 bg-indigo-600 rounded-full text-white hover:bg-indigo-700 transition shadow-md"><RefreshCw size={20} /></button>}
+              <img src={isEditing ? editData.photoURL : userProfile.photoURL} className="w-32 h-32 rounded-full border-[6px] border-white shadow-2xl bg-white object-cover" alt="Profile" />
+              {isEditing && <button onClick={refreshAvatar} className="absolute bottom-0 right-0 p-3 bg-indigo-600 rounded-full text-white hover:bg-indigo-700 transition shadow-lg"><RefreshCw size={20} /></button>}
            </div>
-           {isEditing ? <input className="mt-4 text-2xl font-extrabold text-center bg-transparent border-b-2 border-indigo-200 outline-none" value={editData.customName} onChange={e=>setEditData({...editData, customName:e.target.value})} /> : <h2 className="text-3xl font-extrabold text-gray-900 mt-4">{userProfile.customName}</h2>}
+           {isEditing ? <input className="mt-6 text-2xl font-extrabold text-center bg-transparent border-b-2 border-indigo-100 outline-none focus:border-indigo-500 transition text-slate-800" value={editData.customName} onChange={e=>setEditData({...editData, customName:e.target.value})} /> : <h2 className="text-3xl font-extrabold text-slate-900 mt-6">{userProfile.customName}</h2>}
            <div className="w-full mt-8 space-y-4 text-left">
               <ProfileField label="Bio" isEditing={isEditing} value={isEditing?editData.bio:userProfile.bio} onChange={v=>setEditData({...editData, bio:v})} />
-              <div className="grid grid-cols-2 gap-4">
-                  <ProfileField label="Major" isEditing={isEditing} value={isEditing?editData.major:userProfile.major} onChange={v=>setEditData({...editData, major:v})} />
-                  <ProfileField label="Year" isEditing={isEditing} value={isEditing?editData.year:userProfile.year} onChange={v=>setEditData({...editData, year:v})} />
-              </div>
+              <div className={`bg-slate-50 p-4 rounded-2xl transition border ${isEditing ? 'border-indigo-200 bg-white' : 'border-transparent'}`}><p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Gender</p>{isEditing ? (<select className="w-full bg-transparent font-bold outline-none text-slate-800" value={editData.gender} onChange={e=>setEditData({...editData, gender:e.target.value})}><option value="Male">Male</option><option value="Female">Female</option><option value="Non-binary">Non-binary</option><option value="Prefer not to say">Prefer not to say</option></select>) : <p className="font-bold text-slate-800">{userProfile.gender || "Not set"}</p>}</div>
+              <div className="grid grid-cols-2 gap-4"><ProfileField label="Major" isEditing={isEditing} value={isEditing?editData.major:userProfile.major} onChange={v=>setEditData({...editData, major:v})} /><ProfileField label="Year" isEditing={isEditing} value={isEditing?editData.year:userProfile.year} onChange={v=>setEditData({...editData, year:v})} /></div>
            </div>
-           <div className="mt-6 w-full flex gap-3">
-             {isEditing ? (
-                <>
-                <button onClick={() => {setIsEditing(false); setEditData(userProfile)}} disabled={loading} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-2xl flex items-center justify-center gap-2"><X size={18}/> Cancel</button>
-                <button onClick={handleSave} disabled={loading} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg">{loading ? "Saving..." : <><Save size={18}/> Save</>}</button>
-                </>
-             ) : <button onClick={() => setIsEditing(true)} className="w-full py-3 bg-indigo-50 text-indigo-600 font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-indigo-100 transition"><Edit2 size={18}/> Edit Profile</button>}
-           </div>
+           <div className="mt-8 w-full flex gap-3">{isEditing ? (<><button onClick={() => {setIsEditing(false); setEditData(userProfile)}} disabled={loading} className="flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-200 transition"><X size={18}/> Cancel</button><button onClick={handleSave} disabled={loading} className="flex-1 py-3.5 bg-indigo-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition">{loading ? "Saving..." : <><Save size={18}/> Save</>}</button></>) : <button onClick={() => setIsEditing(true)} className="w-full py-3.5 bg-indigo-50 text-indigo-600 font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-indigo-100 transition"><Edit2 size={18}/> Edit Profile</button>}</div>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3 w-full mt-6">
-        <div className="bg-white p-4 rounded-3xl shadow-sm text-center border border-gray-100"><h3 className="text-2xl font-bold">{myCount}</h3><p className="text-[10px] font-bold text-gray-400 uppercase">Plans</p></div>
-        <div className="bg-white p-4 rounded-3xl shadow-sm text-center border border-gray-100"><h3 className="text-2xl font-bold">4.9</h3><p className="text-[10px] font-bold text-gray-400 uppercase">Rating</p></div>
-        <div className="bg-white p-4 rounded-3xl shadow-sm text-center border border-gray-100"><h3 className="text-2xl font-bold">12</h3><p className="text-[10px] font-bold text-gray-400 uppercase">Rides</p></div>
-      </div>
-      <button onClick={() => auth.signOut()} className="mt-8 w-full flex items-center justify-center gap-2 text-red-600 font-bold bg-red-50 border-2 border-red-100 px-6 py-4 rounded-2xl hover:bg-red-100 transition"><LogOut size={22} /> Log Out</button>
+      <div className="grid grid-cols-3 gap-4 w-full mt-6"><StatsCard label="Requests" value={myCount} /><StatsCard label="Rating" value="4.9" /><StatsCard label="Impact" value="High" /></div>
+      <button onClick={() => auth.signOut()} className="mt-8 w-full flex items-center justify-center gap-2 text-red-500 font-bold bg-red-50 border-2 border-red-50 px-6 py-4 rounded-2xl hover:bg-red-100 transition"><LogOut size={20} /> Log Out</button>
     </div>
   );
 };
 
-const ProfileField = ({label, value, isEditing, onChange}) => (
-  <div className={`bg-gray-50 p-3 rounded-2xl transition ${isEditing ? 'ring-2 ring-indigo-100 bg-white' : ''}`}>
-    <p className="text-xs font-bold text-gray-400 uppercase mb-1">{label}</p>
-    {isEditing ? <input className="w-full bg-transparent font-bold outline-none text-gray-900" value={value} onChange={e=>onChange(e.target.value)}/> : <p className="font-bold text-gray-800">{value}</p>}
-  </div>
+const ProfileField = ({label, value, isEditing, onChange}) => (<div className={`bg-slate-50 p-4 rounded-2xl transition border ${isEditing ? 'border-indigo-200 bg-white' : 'border-transparent'}`}><p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">{label}</p>{isEditing ? <input className="w-full bg-transparent font-bold outline-none text-slate-800" value={value} onChange={e=>onChange(e.target.value)}/> : <p className="font-bold text-slate-800">{value}</p>}</div>);
+const StatsCard = ({ label, value }) => (<div className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-100 text-center"><h3 className="text-2xl font-extrabold text-slate-900">{value}</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{label}</p></div>);
+
+// --- ADMIN DASHBOARD ---
+const AdminDashboard = ({ requests }) => (
+    <div className="pb-24 pt-4 max-w-4xl mx-auto">
+        <div className="bg-slate-900 text-white p-8 rounded-[32px] mb-8 shadow-xl relative overflow-hidden">
+            <div className="relative z-10"><h2 className="text-3xl font-extrabold mb-2 flex items-center gap-3"><Shield size={32} className="text-green-400"/> Admin Command Center</h2><p className="text-slate-400 font-medium">Audit logs and safety oversight.</p></div>
+            <div className="absolute top-0 right-0 w-64 h-64 bg-green-500/10 rounded-full blur-[80px]"></div>
+        </div>
+        <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-800 px-2">Emergency Audit Log</h3>
+            <div className="bg-white rounded-[32px] border border-slate-100 overflow-hidden shadow-sm">
+                {requests.filter(r => r.type === 'SOS').length === 0 ? <div className="p-8 text-center text-slate-400">No incidents.</div> : requests.filter(r => r.type === 'SOS').map(req => (
+                    <div key={req.id} className="p-5 border-b border-slate-50 flex items-center justify-between last:border-0 hover:bg-slate-50 transition"><div><div className="flex items-center gap-2 mb-1"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${req.status === 'RESOLVED' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'RESOLVED' ? 'RESOLVED' : 'ACTIVE'}</span><span className="text-xs text-slate-400">{req.time}</span></div><p className="font-bold text-slate-900">{req.requesterName} triggered SOS</p></div><button className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-indigo-600"><Eye size={18}/></button></div>
+                ))}
+            </div>
+        </div>
+    </div>
 );
 
-const HomeFeed = ({ user, requests, filter, setFilter, searchText, setSearchText, handleDelete, handleEdit, handleSOS, openNewRequest, handleJoin, handleConnect }) => {
-  const filtered = requests.filter(req => {
-    const matchesFilter = filter === 'ALL' || req.type === filter || (filter === 'ALL' && req.type === 'SOS');
-    const matchesSearch = (req.title?.toLowerCase() || "").includes(searchText.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-  return (
-    <div className="space-y-6 pb-20">
-      <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-3">
-        <Search size={22} className="text-gray-400" />
-        <input type="text" placeholder="Search campus..." className="w-full outline-none text-gray-600 bg-transparent" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
-      </div>
-      <div className="h-60 w-full bg-white rounded-[32px] overflow-hidden shadow-sm p-1.5 relative z-0">
-        <div className="h-full w-full rounded-[26px] overflow-hidden relative z-0"><MapComponent requests={requests} /></div>
-        <div className="absolute bottom-5 left-5 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-sm flex items-center gap-2 z-10"><div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div><span className="text-xs font-bold text-indigo-900">Live Campus</span></div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <button onClick={openNewRequest} className="p-6 rounded-[32px] bg-gradient-to-br from-indigo-500 to-purple-700 text-white shadow-xl hover:scale-[1.02] transition text-left"><Car size={28} className="mb-4" /><h3 className="font-bold text-xl">Pool & Travel</h3></button>
-        <button onClick={handleSOS} className="p-6 rounded-[32px] bg-white border-2 border-red-100 text-red-500 shadow-xl hover:scale-[1.02] transition text-left"><AlertTriangle size={28} className="mb-4" /><h3 className="font-bold text-xl">SOS</h3></button>
-      </div>
-      <div>
-        <div className="flex items-center justify-between mb-4 px-2">
-          <h2 className="text-xl font-bold text-gray-900">Campus Feed</h2>
-          <div className="flex gap-1 bg-gray-200/50 p-1.5 rounded-2xl">{['ALL', 'RIDE', 'ERRAND'].map(t => (<button key={t} onClick={() => setFilter(t)} className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${filter === t ? 'bg-white text-indigo-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{t === 'ERRAND' ? 'DELIVERY' : t}</button>))}</div>
-        </div>
-        <div className="space-y-3">
-          {filtered.length === 0 && <div className="text-center p-8 text-gray-400 font-medium">No plans found.</div>}
-          {filtered.map(req => <RequestCard key={req.id} req={req} user={user} handleDelete={handleDelete} handleEdit={handleEdit} handleJoin={handleJoin} handleConnect={handleConnect} />)}
-        </div>
-      </div>
-    </div>
-  );
-};
-
+// --- ACTIVITY PAGE ---
 const ActivityPage = ({ user, requests, handleDelete, handleEdit }) => {
   const myRequests = requests.filter(r => r.requesterId === user.uid);
   return (
-    <div className="pb-20">
-      <h2 className="text-2xl font-bold mb-4 text-indigo-900">Your History</h2>
-      {myRequests.length === 0 ? <div className="bg-white p-10 rounded-3xl text-center text-gray-400">No activity yet.</div> : myRequests.map(req => <RequestCard key={req.id} req={req} user={user} handleDelete={handleDelete} handleEdit={handleEdit} />)}
+    <div className="pb-24 pt-4 max-w-2xl mx-auto">
+      <h2 className="text-2xl font-extrabold mb-6 text-slate-900 px-2">Your History</h2>
+      {myRequests.length === 0 ? <div className="bg-white p-12 rounded-[32px] text-center text-slate-400 border border-slate-100">No activity yet.</div> : <div className="space-y-4">{myRequests.map(req => <RequestCard key={req.id} req={req} user={user} handleDelete={handleDelete} handleEdit={handleEdit} />)}</div>}
     </div>
   );
 };
 
-const RequestCard = ({ req, user, handleDelete, handleEdit, handleJoin, handleConnect }) => {
-  const isMe = req.requesterId === user.uid;
-  const isJoined = req.participants?.includes(user.uid);
-  
-  return (
-    <div className={`bg-white p-5 rounded-[24px] shadow-sm border flex items-center gap-5 transition-all ${req.type === 'SOS' ? 'border-red-100 bg-red-50/30' : 'border-gray-100 hover:border-indigo-100 hover:shadow-md'}`}>
-      <div className={`h-14 w-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${req.type === 'RIDE' ? 'bg-indigo-100 text-indigo-600' : (req.type === 'SOS' ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-orange-100 text-orange-500')}`}>
-        {req.type === 'RIDE' ? <Car size={26} /> : (req.type === 'SOS' ? <AlertTriangle size={26} /> : <Utensils size={26} />)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <h4 className={`font-extrabold text-sm ${req.type === 'SOS' ? 'text-red-600' : 'text-gray-900'}`}>{req.title}</h4>
-        <p className="text-xs text-gray-500 mt-1 truncate font-medium">{req.description}</p>
-        <div className="flex items-center gap-2 mt-2 text-[10px] font-bold text-gray-400">
-          <span className="text-indigo-400">{req.requesterName?.split(' ')[0]}</span> • {req.time || "Now"}
-          {req.subType === 'OFFER' && <span className="text-green-600 bg-green-50 px-1.5 rounded">OFFERING</span>}
-          {req.participants?.length > 0 && <span className="text-gray-500 bg-gray-100 px-1.5 rounded flex items-center gap-1"><User size={8}/> {req.participants.length}</span>}
-        </div>
-      </div>
-      
-      {/* Action Buttons */}
-      <div className="flex flex-col gap-2 pl-2 border-l border-gray-100 items-center">
-        {isMe ? (
-          <>
-            <button onClick={() => handleEdit(req)} className="h-9 w-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-600 hover:text-white transition"><Edit2 size={16} /></button>
-            <button onClick={() => handleDelete(req.id)} className="h-9 w-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition"><Trash2 size={16} /></button>
-          </>
-        ) : (req.subType === 'OFFER' || req.type === 'ERRAND') && (
-          <div className="flex flex-col gap-2">
-            <button onClick={() => handleJoin(req)} className={`h-9 px-3 rounded-xl flex items-center justify-center transition font-bold text-xs gap-1 ${isJoined ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-indigo-600 hover:text-white'}`}>
-                {isJoined ? <Check size={16}/> : (req.type === 'RIDE' ? "Book" : "Accept")}
-            </button>
-            {isJoined && (
-               <button onClick={() => handleConnect(req)} className="h-9 w-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center hover:bg-indigo-600 hover:text-white transition">
-                  <MessageCircle size={16} />
-               </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const NavBtn = ({ icon, active, onClick }) => (
-  <button onClick={onClick} className={`p-3 rounded-2xl transition-all ${active ? 'text-indigo-600 bg-indigo-50 shadow-sm' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}>{icon}</button>
+const NavBtn = ({ icon, active, onClick, id, onDoubleClick }) => (
+  <button id={id} onClick={onClick} onDoubleClick={onDoubleClick} className={`p-3.5 rounded-full transition-all ${active ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>{icon}</button>
 );
 
 export default Dashboard;

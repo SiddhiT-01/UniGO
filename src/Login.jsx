@@ -1,163 +1,107 @@
-// src/Login.jsx
+import { useNavigate } from 'react-router-dom';
 import React, { useState } from 'react';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { UniGoLogo } from './UniGoLogo';
-import { ArrowRight, Mail, Lock, User, Loader2 } from 'lucide-react';
+import { ArrowRight, Mail, Lock, User, Loader2, Key } from 'lucide-react';
 
 const Login = () => {
+  const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 1. Handle Google Login
   const handleGoogleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      setError(error.message);
-    }
+    try { await signInWithPopup(auth, googleProvider); } catch (error) { setError(error.message); }
   };
 
-  // 2. Handle Manual Email/Password Login & Signup
   const handleEmailAuth = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
+    e.preventDefault(); setError(''); setLoading(true);
     try {
       if (isSignUp) {
-        // --- SIGN UP LOGIC ---
         const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-        // Important: Immediately update their profile name so the Dashboard isn't blank
-        await updateProfile(userCredential.user, {
-          displayName: formData.name,
-          photoURL: `https://ui-avatars.com/api/?name=${formData.name}&background=random`
-        });
+        await updateProfile(userCredential.user, { displayName: formData.name, photoURL: `https://ui-avatars.com/api/?name=${formData.name}&background=random` });
       } else {
-        // --- LOGIN LOGIC ---
         await signInWithEmailAndPassword(auth, formData.email, formData.password);
       }
-    } catch (err) {
-      // Clean up Firebase error messages for the user
-      const msg = err.code.replace('auth/', '').replace(/-/g, ' ');
-      setError(msg.charAt(0).toUpperCase() + msg.slice(1));
-    }
+    } catch (err) { setError(err.message.replace('Firebase:', '')); }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#0f1115] relative overflow-hidden font-sans selection:bg-indigo-500 selection:text-white">
-      
-      {/* Dynamic Background */}
-      <div className="absolute top-[-20%] left-[-10%] w-[60vh] h-[60vh] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[60vh] h-[60vh] bg-orange-500/10 rounded-full blur-[120px]" style={{animationDelay: '1s'}}></div>
+    <div className="min-h-screen w-full relative overflow-hidden flex flex-col items-center justify-center p-6">
+      <div className="hero-aura"></div>
 
-      {/* Main Glass Card */}
-      <div className="relative z-10 bg-white/5 backdrop-blur-xl border border-white/10 p-8 sm:p-10 rounded-[40px] shadow-2xl w-full max-w-md flex flex-col items-center">
+      {/* Official Badge */}
+      <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-full border border-gray-200 shadow-sm mb-8 animate-[float_6s_ease-in-out_infinite]">
+        <span className="w-2 h-2 bg-indigo-500 rounded-full animate-[pulse-ring_2s_infinite]"></span>
+        <span className="text-[10px] font-extrabold tracking-widest text-indigo-900 uppercase">Official Campus Network</span>
+      </div>
+
+      {/* Hero Content */}
+      <div className="text-center mb-10 max-w-2xl">
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 mb-4 leading-tight">
+          The Pulse of <br />
+          <span className="gradient-text">Campus Life.</span>
+        </h1>
+        <p className="text-slate-500 text-lg md:text-xl font-medium leading-relaxed">
+          A unified ecosystem for travel coordination, peer assistance, and instant emergency response.
+        </p>
+      </div>
+
+      {/* Interactive Cards (Login Form) */}
+      <div className="w-full max-w-md bg-white/80 backdrop-blur-2xl border border-white/50 p-8 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] transition-all hover:translate-y-[-5px]">
         
-        <div className="mb-6 p-3 bg-white/5 rounded-2xl border border-white/5 shadow-inner">
-           <UniGoLogo className="h-8 w-auto" />
+        <div className="flex justify-center mb-6">
+           <UniGoLogo className="h-10" />
         </div>
 
-        <h2 className="text-3xl font-extrabold text-white mb-2 tracking-tight">
-          {isSignUp ? 'Join the Campus.' : 'Welcome Back.'}
-        </h2>
-        <p className="text-gray-400 text-sm mb-8 text-center">
-          {isSignUp ? 'Create an account to start coordinating rides.' : 'Enter your details to access your dashboard.'}
-        </p>
+        {error && <div className="bg-red-50 text-red-500 text-xs font-bold p-3 rounded-xl mb-4 text-center">{error}</div>}
 
-        {/* ERROR MESSAGE */}
-        {error && (
-          <div className="w-full bg-red-500/10 border border-red-500/50 rounded-xl p-3 mb-4 text-red-200 text-xs text-center font-bold">
-            ⚠️ {error}
-          </div>
-        )}
-
-        {/* MANUAL FORM */}
-        <form onSubmit={handleEmailAuth} className="w-full space-y-4">
-          
+        <form onSubmit={handleEmailAuth} className="space-y-4">
           {isSignUp && (
-            <div className="relative group">
-              <User className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-indigo-400 transition" size={20} />
-              <input 
-                type="text" 
-                placeholder="Full Name" 
-                required
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-white outline-none focus:border-indigo-500/50 focus:bg-white/10 transition placeholder:text-gray-600"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-              />
+            <div className="group bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3 focus-within:border-indigo-300 focus-within:bg-white transition-all">
+              <User size={20} className="text-slate-400 group-focus-within:text-indigo-500" />
+              <input type="text" placeholder="Full Name" required className="bg-transparent w-full outline-none text-slate-800 font-medium placeholder:text-slate-400" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
             </div>
           )}
-
-          <div className="relative group">
-            <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-indigo-400 transition" size={20} />
-            <input 
-              type="email" 
-              placeholder="Student Email" 
-              required
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-white outline-none focus:border-indigo-500/50 focus:bg-white/10 transition placeholder:text-gray-600"
-              value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-            />
+          <div className="group bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3 focus-within:border-indigo-300 focus-within:bg-white transition-all">
+            <Mail size={20} className="text-slate-400 group-focus-within:text-indigo-500" />
+            <input type="email" placeholder="Student Email" required className="bg-transparent w-full outline-none text-slate-800 font-medium placeholder:text-slate-400" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+          </div>
+          <div className="group bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3 focus-within:border-indigo-300 focus-within:bg-white transition-all">
+            <Key size={20} className="text-slate-400 group-focus-within:text-indigo-500" />
+            <input type="password" placeholder="Password" required minLength={6} className="bg-transparent w-full outline-none text-slate-800 font-medium placeholder:text-slate-400" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
           </div>
 
-          <div className="relative group">
-            <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-indigo-400 transition" size={20} />
-            <input 
-              type="password" 
-              placeholder="Password" 
-              required
-              minLength={6}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-white outline-none focus:border-indigo-500/50 focus:bg-white/10 transition placeholder:text-gray-600"
-              value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl font-bold text-white shadow-lg shadow-indigo-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? 'Create Account' : 'Sign In')}
-            {!loading && <ArrowRight size={18} />}
+          <button type="submit" disabled={loading} className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-lg shadow-lg shadow-slate-200 transition-all flex items-center justify-center gap-2 hover:translate-y-[-2px]">
+            {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? 'Join Platform' : 'Access Dashboard')}
           </button>
         </form>
 
-        {/* DIVIDER */}
-        <div className="w-full flex items-center gap-3 my-6">
-          <div className="h-[1px] bg-white/10 flex-1"></div>
-          <span className="text-gray-500 text-xs font-bold uppercase">Or continue with</span>
-          <div className="h-[1px] bg-white/10 flex-1"></div>
+        <div className="relative my-6 text-center">
+          <span className="bg-white/80 px-2 text-xs font-bold text-slate-400 relative z-10">OR</span>
+          <div className="absolute top-1/2 left-0 w-full h-[1px] bg-slate-100"></div>
         </div>
 
-        {/* GOOGLE BUTTON */}
-        <button 
-          onClick={handleGoogleLogin}
-          className="w-full py-3.5 bg-white text-gray-900 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-gray-50 transition shadow-lg shadow-white/5"
-        >
+        <button onClick={handleGoogleLogin} className="w-full py-3 bg-white border-2 border-slate-100 text-slate-700 rounded-2xl font-bold flex items-center justify-center gap-3 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all">
           <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" className="w-5 h-5"/>
-          <span>Google</span>
+          <span>Continue with Google</span>
         </button>
 
-        {/* TOGGLE LINK */}
-        <p className="mt-8 text-gray-400 text-sm">
-          {isSignUp ? "Already have an account?" : "Don't have an account?"}
-          <button 
-            onClick={() => {setIsSignUp(!isSignUp); setError('');}} 
-            className="ml-2 text-indigo-400 font-bold hover:text-indigo-300 transition hover:underline"
-          >
-            {isSignUp ? "Log In" : "Sign Up"}
+        <p className="mt-6 text-center text-slate-500 text-sm font-medium">
+          {isSignUp ? "Already a member?" : "New to campus?"}
+          <button onClick={() => {setIsSignUp(!isSignUp); setError('');}} className="ml-2 text-indigo-600 font-bold hover:underline">
+            {isSignUp ? "Sign In" : "Get Started"}
           </button>
         </p>
-
       </div>
-      
-      <div className="absolute bottom-6 text-gray-600 text-xs font-medium tracking-widest uppercase opacity-50">
-        Secure Campus Access • v1.0
+
+      <div className="absolute bottom-6 flex gap-4 text-xs font-bold text-slate-300 uppercase tracking-widest">
+        <span>© 2026 UniGo</span>
+        <span>•</span>
+        <span>Secure Connection</span>
       </div>
     </div>
   );
